@@ -19,18 +19,14 @@ class ImageViewer(tk.Frame):
         self.canvas = tk.Canvas(self)
         self.canvas.pack()
 
-        # Controls
         ctrl_frame = tk.Frame(self)
         ctrl_frame.pack()
-
-        # Removed split selector because App handles split selection
 
         tk.Button(ctrl_frame, text="← Prev", command=self.prev_image).pack(side="left")
         tk.Button(ctrl_frame, text="Next →", command=self.next_image).pack(side="left")
         tk.Button(ctrl_frame, text="Save", command=self.save_labels).pack(side="left")
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
 
-        # Events
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)

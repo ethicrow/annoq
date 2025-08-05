@@ -57,11 +57,9 @@ class App:
         self.load_viewer()
 
     def load_viewer(self):
-        # Clear old viewer
         for widget in self.viewer_frame.winfo_children():
             widget.destroy()
 
-        # Use the imported ImageViewer here
         self.viewer = ImageViewer(self.viewer_frame, self.current_dataset)
         self.viewer.pack(fill="both", expand=True)
 
