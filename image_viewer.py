@@ -1,3 +1,4 @@
+import platform
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -30,7 +31,12 @@ class ImageViewer(tk.Frame):
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
-        root.bind("<Delete>", self.delete_selected)
+        self.canvas.bind("<Delete>", self.delete_selected)
+        if platform.system() == "Linux":
+            self.canvas.bind('<Button-4>', self.mouseWheelHandler)
+            self.canvas.bind('<Button-5>', self.mouseWheelHandler)
+        else:
+            self.canvas.bind('<MouseWheel>', self.mouseWheelHandler)
 
         self.load_image()
 
@@ -88,6 +94,17 @@ class ImageViewer(tk.Frame):
             bh = abs(y1 - y0) / h
             self.boxes.append(BoundingBox(0, xc, yc, bw, bh, self.dataset.class_names[0]))
             self.start_draw = None
+            self.refresh()
+
+    def mouseWheelHandler(self, event):
+        if platform.system() == "Linux":
+            delta = 1 if event.num == 4 else -1
+        else:
+            delta = event.delta
+        if self.dragging and self.selected_box:
+            scale_factor = 1.1 if delta > 0 else 0.9
+            self.selected_box.width *= scale_factor
+            self.selected_box.height *= scale_factor
             self.refresh()
 
     def delete_selected(self, event=None):

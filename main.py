@@ -6,17 +6,20 @@ from yolo_dataset import YoloDataset
 from image_viewer import ImageViewer
 from PIL import Image, ImageTk
 import cv2
+import argparse
 
 class App:
-    def __init__(self, root):
+    def __init__(self, root, yaml_path=None):
         self.root = root
         self.root.title("YOLO Dataset Viewer")
 
         # Ask for YAML file
-        yaml_path = filedialog.askopenfilename(
-            title="Select YOLO data.yaml",
-            filetypes=[("YAML files", "*.yaml *.yml")]
-        )
+        if not yaml_path:
+            yaml_path = filedialog.askopenfilename(
+                title="Select YOLO data.yaml",
+                filetypes=[("YAML files", "*.yaml *.yml")]
+            )
+
         if not yaml_path:
             messagebox.showerror("Error", "No data.yaml selected.")
             root.quit()
@@ -68,8 +71,14 @@ class App:
         self.current_dataset = self.datasets[split]
         self.load_viewer()
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="AnnoQ - Simple Image Annotation Tool")
+    parser.add_argument("--yaml", help="Path to YAML dataset config file")
+    return parser.parse_args()
 
 if __name__ == "__main__":
+
+    args = parse_args()
     root = tk.Tk()
-    app = App(root)
+    app = App(root, args.yaml if args.yaml else None)
     root.mainloop()
