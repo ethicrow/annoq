@@ -17,6 +17,13 @@ class ImageViewer(tk.Frame):
         self.start_draw = None
         self.show_boxes = tk.BooleanVar(value=True)
 
+        self.zoom = 1.0
+        self.pan_x = 0
+        self.pan_y = 0
+
+        self.panning = False
+        self.pan_start = None
+
         self.canvas = tk.Canvas(self)
         self.canvas.pack()
         self.canvas.focus_set()
@@ -41,6 +48,10 @@ class ImageViewer(tk.Frame):
         else:
             self.canvas.bind('<MouseWheel>', self.mouseWheelHandler)
 
+        self.canvas.bind("<Button-2>", self.on_pan_start)
+        self.canvas.bind("<B2-Motion>", self.on_pan_move)
+        self.canvas.bind("<ButtonRelease-2>", self.on_pan_end)
+
         self.load_image()
 
     def load_image(self):
@@ -52,14 +63,24 @@ class ImageViewer(tk.Frame):
         self.canvas.create_image(0, 0, anchor="nw", image=self.image_tk)
         self.boxes = self.dataset.load_labels()
         self.selected_box = None
+        self.zoom = 1.0
+        self.pan_x = 0
+        self.pan_y = 0
         self.refresh()
 
     def refresh(self):
         self.canvas.delete("box")
+        # Redraw image at new zoom/pan (draw image first)
+        self.redraw_image()
         if not self.show_boxes.get():
             return
         for box in self.boxes:
             x1, y1, x2, y2 = box.to_pixel_rect(self.img_pil.width, self.img_pil.height)
+            # Apply zoom and pan
+            x1 = x1 * self.zoom + self.pan_x
+            y1 = y1 * self.zoom + self.pan_y
+            x2 = x2 * self.zoom + self.pan_x
+            y2 = y2 * self.zoom + self.pan_y
             color = box.color
             self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=4, tag="box")
             self.canvas.create_text(x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box")
@@ -69,36 +90,88 @@ class ImageViewer(tk.Frame):
         total = self.dataset.total_images()
         text = f"{idx}/{total}"
         self.canvas.create_text(
-            self.img_pil.width - 10, 10,
+            self.img_pil.width * self.zoom + self.pan_x - 10, 10 + self.pan_y,
             text=text, fill="white", anchor="ne", font=("Arial", 16, "bold"), tag="box"
         )
 
+    def redraw_image(self):
+        # Remove previous image
+        self.canvas.delete("img")
+        max_dim = 16384  # Increased from 4096
+        w = min(int(self.img_pil.width * self.zoom), max_dim)
+        h = min(int(self.img_pil.height * self.zoom), max_dim)
+        w = max(1, w)
+        h = max(1, h)
+
+        if self.zoom == 1.0:
+            # Show the original image, centered if needed
+            img_to_show = self.img_pil
+            display_w, display_h = self.img_pil.width, self.img_pil.height
+            pan_x, pan_y = self.pan_x, self.pan_y
+        else:
+            # Calculate crop box in original image coordinates
+            # The region of the image to show is (canvas_w, canvas_h) in display, but at 1/zoom scale in the image
+            canvas_w = self.canvas.winfo_width()
+            canvas_h = self.canvas.winfo_height()
+            # Center of the view in image coordinates
+            center_x = (-self.pan_x + canvas_w / 2) / self.zoom
+            center_y = (-self.pan_y + canvas_h / 2) / self.zoom
+            # Size of the crop box in image coordinates
+            crop_w = canvas_w / self.zoom
+            crop_h = canvas_h / self.zoom
+            # Crop box
+            left = max(0, int(center_x - crop_w / 2))
+            upper = max(0, int(center_y - crop_h / 2))
+            right = min(self.img_pil.width, int(center_x + crop_w / 2))
+            lower = min(self.img_pil.height, int(center_y + crop_h / 2))
+            img_cropped = self.img_pil.crop((left, upper, right, lower))
+            # Resize cropped region to fit canvas
+            img_to_show = img_cropped.resize((canvas_w, canvas_h), Image.LANCZOS)
+            display_w, display_h = canvas_w, canvas_h
+            pan_x, pan_y = 0, 0
+
+        self.image_tk = ImageTk.PhotoImage(img_to_show)
+        self.canvas.create_image(pan_x, pan_y, anchor="nw", image=self.image_tk, tag="img")
+
     def on_click(self, event):
+        # Adjust event coordinates for zoom and pan
+        zx = (event.x - self.pan_x) / self.zoom
+        zy = (event.y - self.pan_y) / self.zoom
         for box in reversed(self.boxes):
-            if box.contains_point(event.x, event.y, self.img_pil.width, self.img_pil.height):
+            if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
                 self.selected_box = box
                 self.dragging = True
                 return
         self.selected_box = None
-        self.start_draw = (event.x, event.y)
+        self.start_draw = (zx, zy)
 
     def on_drag(self, event):
+        zx = (event.x - self.pan_x) / self.zoom
+        zy = (event.y - self.pan_y) / self.zoom
         if self.dragging and self.selected_box:
             w, h = self.img_pil.width, self.img_pil.height
-            self.selected_box.x_center = event.x / w
-            self.selected_box.y_center = event.y / h
+            self.selected_box.x_center = zx / w
+            self.selected_box.y_center = zy / h
             self.refresh()
         elif self.start_draw:
             self.refresh()
             x0, y0 = self.start_draw
-            self.canvas.create_rectangle(x0, y0, event.x, event.y, outline="white", dash=(4, 2), tag="box")
+            # Transform back to canvas coordinates for drawing
+            x0c = x0 * self.zoom + self.pan_x
+            y0c = y0 * self.zoom + self.pan_y
+            x1c = event.x
+            y1c = event.y
+            self.canvas.create_rectangle(x0c, y0c, x1c, y1c, outline="white", dash=(4, 2), tag="box")
+
 
     def on_release(self, event):
         if self.dragging:
             self.dragging = False
         elif self.start_draw:
             x0, y0 = self.start_draw
-            x1, y1 = event.x, event.y
+            zx = (event.x - self.pan_x) / self.zoom
+            zy = (event.y - self.pan_y) / self.zoom
+            x1, y1 = zx, zy
             w, h = self.img_pil.width, self.img_pil.height
             xc = ((x0 + x1) / 2) / w
             yc = ((y0 + y1) / 2) / h
@@ -118,6 +191,69 @@ class ImageViewer(tk.Frame):
             self.selected_box.width *= scale_factor
             self.selected_box.height *= scale_factor
             self.refresh()
+        else:
+            # Zoom image at mouse pointer
+            if platform.system() == "Linux":
+                zoom_factor = 1.1 if delta > 0 else 0.9
+            else:
+                zoom_factor = 1.0 + (0.1 if delta > 0 else -0.1)
+            # Compute min and max zoom so that image does not go below original size or exceed 4096x4096
+            min_zoom = 1.0
+            max_dim = 16384  # Increased from 4096
+            max_zoom_w = max_dim / self.img_pil.width
+            max_zoom_h = max_dim / self.img_pil.height
+            max_zoom = min(max_zoom_w, max_zoom_h)
+            new_zoom = max(min_zoom, min(max_zoom, self.zoom * zoom_factor))
+            if new_zoom == self.zoom:
+                return
+            mouse_x, mouse_y = event.x, event.y
+            rel_x = (mouse_x - self.pan_x) / self.zoom
+            rel_y = (mouse_y - self.pan_y) / self.zoom
+            self.zoom = new_zoom
+            if self.zoom == 1.0:
+                # Center image on canvas
+                canvas_w = self.canvas.winfo_width()
+                canvas_h = self.canvas.winfo_height()
+                self.pan_x = (canvas_w - self.img_pil.width) // 2
+                self.pan_y = (canvas_h - self.img_pil.height) // 2
+            else:
+                self.pan_x = mouse_x - rel_x * self.zoom
+                self.pan_y = mouse_y - rel_y * self.zoom
+            self.refresh()
+
+    def on_pan_start(self, event):
+        if self.zoom > 1.0:
+            self.panning = True
+            self.pan_start = (event.x, event.y, self.pan_x, self.pan_y)
+
+    def on_pan_move(self, event):
+        if self.panning and self.zoom > 1.0 and self.pan_start:
+            x0, y0, pan_x0, pan_y0 = self.pan_start
+            dx = event.x - x0
+            dy = event.y - y0
+            new_pan_x = pan_x0 + dx
+            new_pan_y = pan_y0 + dy
+
+            # Calculate canvas and crop region
+            canvas_w = self.canvas.winfo_width()
+            canvas_h = self.canvas.winfo_height()
+            crop_w = canvas_w / self.zoom
+            crop_h = canvas_h / self.zoom
+
+            # Compute allowed pan range so crop stays within image
+            min_pan_x = int(canvas_w - self.img_pil.width * self.zoom)
+            max_pan_x = 0
+            min_pan_y = int(canvas_h - self.img_pil.height * self.zoom)
+            max_pan_y = 0
+
+            # Clamp pan so that the image does not move out of bounds
+            self.pan_x = min(max(new_pan_x, min_pan_x), max_pan_x)
+            self.pan_y = min(max(new_pan_y, min_pan_y), max_pan_y)
+            self.refresh()
+
+    def on_pan_end(self, event):
+        self.panning = False
+        self.pan_start = None
 
     def delete_selected(self, event=None):
         if self.selected_box:
