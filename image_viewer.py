@@ -19,13 +19,16 @@ class ImageViewer(tk.Frame):
 
         self.canvas = tk.Canvas(self)
         self.canvas.pack()
-
+        self.canvas.focus_set()
+    
         ctrl_frame = tk.Frame(self)
         ctrl_frame.pack()
 
         tk.Button(ctrl_frame, text="← Prev", command=self.prev_image).pack(side="left")
         tk.Button(ctrl_frame, text="Next →", command=self.next_image).pack(side="left")
         tk.Button(ctrl_frame, text="Save", command=self.save_labels).pack(side="left")
+        self.canvas.bind("<Left>", lambda e: self.prev_image())
+        self.canvas.bind("<Right>", lambda e: self.next_image())
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
 
         self.canvas.bind("<Button-1>", self.on_click)
@@ -60,6 +63,15 @@ class ImageViewer(tk.Frame):
             color = box.color
             self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=4, tag="box")
             self.canvas.create_text(x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box")
+
+        # Draw current image index / total images at top right
+        idx = self.dataset.current_index() + 1
+        total = self.dataset.total_images()
+        text = f"{idx}/{total}"
+        self.canvas.create_text(
+            self.img_pil.width - 10, 10,
+            text=text, fill="white", anchor="ne", font=("Arial", 16, "bold"), tag="box"
+        )
 
     def on_click(self, event):
         for box in reversed(self.boxes):
