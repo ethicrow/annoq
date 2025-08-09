@@ -97,7 +97,8 @@ class ImageViewer(tk.Frame):
     def redraw_image(self):
         # Remove previous image
         self.canvas.delete("img")
-        max_dim = 16384  # Increased from 4096
+        # Limit rendering to 16384x16384 pixels (increased from 4096)
+        max_dim = 16384
         w = min(int(self.img_pil.width * self.zoom), max_dim)
         h = min(int(self.img_pil.height * self.zoom), max_dim)
         w = max(1, w)
