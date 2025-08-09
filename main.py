@@ -21,7 +21,7 @@ class App:
             )
 
         if not yaml_path:
-            messagebox.showerror("Error", "No data.yaml selected.")
+            messagebox.showerror("Error", "No data.yaml file selected.")
             root.quit()
             return
 
