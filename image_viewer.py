@@ -41,6 +41,7 @@ class ImageViewer(tk.Frame):
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.canvas.bind("<Button-3>", self.on_right_click)
         self.canvas.bind("<Delete>", self.delete_selected)
         if platform.system() == "Linux":
             self.canvas.bind('<Button-4>', self.mouseWheelHandler)
@@ -182,6 +183,21 @@ class ImageViewer(tk.Frame):
             self.start_draw = None
             self.refresh()
 
+    def on_right_click(self, event):
+        zx = (event.x - self.pan_x) / self.zoom
+        zy = (event.y - self.pan_y) / self.zoom
+        for box in reversed(self.boxes):
+            if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
+                self.selected_box = box
+                menu = tk.Menu(self, tearoff=0)
+                for i, name in enumerate(self.dataset.class_names):
+                    menu.add_command(label=name, command=lambda cid=i: self.change_box_class(cid))
+                try:
+                    menu.tk_popup(event.x_root, event.y_root)
+                finally:
+                    menu.grab_release()
+                break
+
     def mouseWheelHandler(self, event):
         if platform.system() == "Linux":
             delta = 1 if event.num == 4 else -1
@@ -260,6 +276,16 @@ class ImageViewer(tk.Frame):
         if self.selected_box:
             self.boxes.remove(self.selected_box)
             self.selected_box = None
+            self.refresh()
+
+    def change_box_class(self, class_id):
+        if self.selected_box is not None:
+            self.selected_box.class_id = class_id
+            if class_id < len(self.dataset.class_names):
+                self.selected_box.class_name = self.dataset.class_names[class_id]
+            else:
+                self.selected_box.class_name = str(class_id)
+            self.selected_box.color = self.selected_box._generate_color(class_id)
             self.refresh()
 
     def save_labels(self):
