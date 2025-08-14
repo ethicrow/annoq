@@ -175,11 +175,11 @@ class ImageViewer(tk.Frame):
             zy = (event.y - self.pan_y) / self.zoom
             x1, y1 = zx, zy
             w, h = self.img_pil.width, self.img_pil.height
-            xc = ((x0 + x1) / 2) / w
-            yc = ((y0 + y1) / 2) / h
-            bw = abs(x1 - x0) / w
-            bh = abs(y1 - y0) / h
-            self.boxes.append(BoundingBox(0, xc, yc, bw, bh, self.dataset.class_names[0]))
+            box = BoundingBox.from_pixel_coords(
+                0, x0, y0, x1, y1, w, h, self.dataset.class_names[0]
+            )
+            if box:
+                self.boxes.append(box)
             self.start_draw = None
             self.refresh()
 
@@ -205,8 +205,13 @@ class ImageViewer(tk.Frame):
             delta = event.delta
         if self.dragging and self.selected_box:
             scale_factor = 1.1 if delta > 0 else 0.9
-            self.selected_box.width *= scale_factor
-            self.selected_box.height *= scale_factor
+            w, h = self.img_pil.width, self.img_pil.height
+            new_w = self.selected_box.width * scale_factor
+            new_h = self.selected_box.height * scale_factor
+            min_w = 10 / w
+            min_h = 10 / h
+            self.selected_box.width = max(new_w, min_w)
+            self.selected_box.height = max(new_h, min_h)
             self.refresh()
         else:
             # Zoom image at mouse pointer

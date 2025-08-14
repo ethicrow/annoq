@@ -29,3 +29,16 @@ class BoundingBox:
     def contains_point(self, x, y, img_w, img_h):
         x1, y1, x2, y2 = self.to_pixel_rect(img_w, img_h)
         return x1 <= x <= x2 and y1 <= y <= y2
+
+    @staticmethod
+    def from_pixel_coords(class_id, x0, y0, x1, y1, img_w, img_h, class_name=""):
+        """Create a bounding box from pixel coordinates if it meets the
+        minimum size requirement of 10x10 pixels. Returns ``None`` if the
+        box is too small."""
+        if abs(x1 - x0) < 10 or abs(y1 - y0) < 10:
+            return None
+        xc = ((x0 + x1) / 2) / img_w
+        yc = ((y0 + y1) / 2) / img_h
+        bw = abs(x1 - x0) / img_w
+        bh = abs(y1 - y0) / img_h
+        return BoundingBox(class_id, xc, yc, bw, bh, class_name)
