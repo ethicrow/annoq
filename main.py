@@ -51,6 +51,9 @@ class App:
         self.split_selector.pack(pady=5)
         self.split_selector.bind("<<ComboboxSelected>>", self.on_split_selected)
 
+        # Button to show dataset statistics
+        tk.Button(root, text="Show Stats", command=self.show_stats).pack(pady=5)
+
         # Frame for image viewer
         self.viewer_frame = tk.Frame(root)
         self.viewer_frame.pack(fill="both", expand=True)
@@ -70,6 +73,19 @@ class App:
         split = self.split_selector.get()
         self.current_dataset = self.datasets[split]
         self.load_viewer()
+
+    def show_stats(self):
+        stats = self.current_dataset.compute_stats()
+        win = tk.Toplevel(self.root)
+        win.title("Dataset Stats")
+        text = tk.Text(win, width=50, height=20)
+        text.pack(padx=10, pady=10)
+        text.insert(tk.END, f"Total images: {stats['total_images']}\n")
+        text.insert(tk.END, f"Background images: {stats['background_images']}\n\n")
+        text.insert(tk.END, "Class occurrences:\n")
+        for name, count in stats['class_counts'].items():
+            text.insert(tk.END, f"  {name}: {count}\n")
+        text.config(state=tk.DISABLED)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AnnoQ - Simple Image Annotation Tool")
