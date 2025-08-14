@@ -15,13 +15,10 @@ class YamlDatasetLoader:
 
         for split in ['train', 'val', 'test']:
             if split in data:
-                split_path = data[split]
-                if os.path.isabs(split_path):
-                    images_path = os.path.abspath(split_path)
-                else:
-                    images_path = os.path.abspath(os.path.join(self.root_dir, split_path))
+                data[split] = data[split].lstrip("/")
+                images_path = os.path.abspath(os.path.join(self.root_dir, data[split]))
                 labels_path = images_path.replace("images", "labels")
-                print(f"datasets:{split} -> {split_path} / {images_path} / {labels_path}")
+                print(f"datasets:{split} -> {data[split]} / {images_path} / {labels_path}")
                 if os.path.isdir(images_path) and os.path.isdir(labels_path):
                     print("Adding dataset keys")
                     self.datasets[split] = {
