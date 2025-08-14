@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
-from bounding_box import BoundingBox
+from bounding_box import BoundingBox, smallest_box_containing_point
 from coords import image_to_canvas_coords, canvas_to_image_coords
 
 
@@ -170,11 +170,13 @@ class ImageViewer(tk.Frame):
         zx, zy = canvas_to_image_coords(
             event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
         )
-        for box in reversed(self.boxes):
-            if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
-                self.selected_box = box
-                self.dragging = True
-                return
+        box = smallest_box_containing_point(
+            self.boxes, zx, zy, self.img_pil.width, self.img_pil.height
+        )
+        if box is not None:
+            self.selected_box = box
+            self.dragging = True
+            return
         self.selected_box = None
         self.start_draw = (zx, zy)
 
@@ -223,17 +225,18 @@ class ImageViewer(tk.Frame):
         zx, zy = canvas_to_image_coords(
             event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
         )
-        for box in reversed(self.boxes):
-            if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
-                self.selected_box = box
-                menu = tk.Menu(self, tearoff=0)
-                for i, name in enumerate(self.dataset.class_names):
-                    menu.add_command(label=name, command=lambda cid=i: self.change_box_class(cid))
-                try:
-                    menu.tk_popup(event.x_root, event.y_root)
-                finally:
-                    menu.grab_release()
-                break
+        box = smallest_box_containing_point(
+            self.boxes, zx, zy, self.img_pil.width, self.img_pil.height
+        )
+        if box is not None:
+            self.selected_box = box
+            menu = tk.Menu(self, tearoff=0)
+            for i, name in enumerate(self.dataset.class_names):
+                menu.add_command(label=name, command=lambda cid=i: self.change_box_class(cid))
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
 
     def mouseWheelHandler(self, event):
         if platform.system() == "Linux":

@@ -42,3 +42,21 @@ class BoundingBox:
         bw = abs(x1 - x0) / img_w
         bh = abs(y1 - y0) / img_h
         return BoundingBox(class_id, xc, yc, bw, bh, class_name)
+
+
+def smallest_box_containing_point(boxes, x, y, img_w, img_h):
+    """Return the smallest bounding box containing a point.
+
+    Given a list of ``boxes`` and a point ``(x, y)`` in pixel coordinates,
+    find the box with the smallest area that still contains the point. If no
+    box contains the point, ``None`` is returned.
+    """
+    smallest = None
+    min_area = float("inf")
+    for box in boxes:
+        if box.contains_point(x, y, img_w, img_h):
+            area = box.width * box.height
+            if area < min_area:
+                smallest = box
+                min_area = area
+    return smallest
