@@ -34,6 +34,13 @@ class ImageViewer(tk.Frame):
         tk.Button(ctrl_frame, text="← Prev", command=self.prev_image).pack(side="left")
         tk.Button(ctrl_frame, text="Next →", command=self.next_image).pack(side="left")
         tk.Button(ctrl_frame, text="Save", command=self.save_labels).pack(side="left")
+        tk.Label(ctrl_frame, text="Image").pack(side="left")
+        self.index_var = tk.StringVar(value="1")
+        idx_entry = tk.Entry(ctrl_frame, width=5, textvariable=self.index_var)
+        idx_entry.pack(side="left")
+        self.total_label = tk.Label(ctrl_frame, text=f"/{self.dataset.total_images()}")
+        self.total_label.pack(side="left")
+        idx_entry.bind("<Return>", self.on_index_change)
         self.canvas.bind("<Left>", lambda e: self.prev_image())
         self.canvas.bind("<Right>", lambda e: self.next_image())
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
@@ -67,6 +74,8 @@ class ImageViewer(tk.Frame):
         self.zoom = 1.0
         self.pan_x = 0
         self.pan_y = 0
+        self.index_var.set(str(self.dataset.current_index() + 1))
+        self.total_label.config(text=f"/{self.dataset.total_images()}")
         self.refresh()
 
     def refresh(self):
@@ -276,6 +285,14 @@ class ImageViewer(tk.Frame):
     def on_pan_end(self, event):
         self.panning = False
         self.pan_start = None
+
+    def on_index_change(self, event=None):
+        try:
+            new_idx = int(self.index_var.get()) - 1
+        except ValueError:
+            return
+        self.dataset.set_index(new_idx)
+        self.load_image()
 
     def delete_selected(self, event=None):
         if self.selected_box:
