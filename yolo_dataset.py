@@ -47,6 +47,10 @@ class YoloDataset:
     def prev(self):
         if self.index > 0:
             self.index -= 1
+
+    def set_index(self, idx):
+        if 0 <= idx < len(self.image_paths):
+            self.index = idx
     
     def current_index(self):
         return self.index
