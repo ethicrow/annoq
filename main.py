@@ -45,11 +45,17 @@ class App:
             paths = self.yaml_loader.get_paths(split)
             self.datasets[split] = YoloDataset(paths["images"], paths["labels"], class_names)
 
-        # GUI dropdown to select split
-        self.split_selector = ttk.Combobox(root, values=list(self.datasets.keys()), state="readonly")
+        # GUI dropdown to select split and image counter
+        self.top_frame = tk.Frame(root)
+        self.top_frame.pack(pady=5)
+        self.split_selector = ttk.Combobox(
+            self.top_frame, values=list(self.datasets.keys()), state="readonly"
+        )
         self.split_selector.current(0)
-        self.split_selector.pack(pady=5)
+        self.split_selector.pack(side="left")
         self.split_selector.bind("<<ComboboxSelected>>", self.on_split_selected)
+        self.image_counter_label = tk.Label(self.top_frame, text="")
+        self.image_counter_label.pack(side="left", padx=10)
 
         # Frame for image viewer
         self.viewer_frame = tk.Frame(root)
@@ -63,13 +69,18 @@ class App:
         for widget in self.viewer_frame.winfo_children():
             widget.destroy()
 
-        self.viewer = ImageViewer(self.viewer_frame, self.current_dataset)
+        self.viewer = ImageViewer(
+            self.viewer_frame, self.current_dataset, self.update_image_counter
+        )
         self.viewer.pack(fill="both", expand=True)
 
     def on_split_selected(self, event=None):
         split = self.split_selector.get()
         self.current_dataset = self.datasets[split]
         self.load_viewer()
+
+    def update_image_counter(self, idx, total):
+        self.image_counter_label.config(text=f"{idx}/{total}")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AnnoQ - Simple Image Annotation Tool")

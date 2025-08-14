@@ -7,9 +7,10 @@ from bounding_box import BoundingBox
 
 
 class ImageViewer(tk.Frame):
-    def __init__(self, root, dataset):
+    def __init__(self, root, dataset, counter_callback=None):
         super().__init__(root)
         self.dataset = dataset
+        self.counter_callback = counter_callback
 
         self.boxes = []
         self.selected_box = None
@@ -68,6 +69,10 @@ class ImageViewer(tk.Frame):
         self.pan_x = 0
         self.pan_y = 0
         self.refresh()
+        if self.counter_callback:
+            idx = self.dataset.current_index() + 1
+            total = self.dataset.total_images()
+            self.counter_callback(idx, total)
 
     def refresh(self):
         self.canvas.delete("box")
@@ -86,14 +91,6 @@ class ImageViewer(tk.Frame):
             self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=4, tag="box")
             self.canvas.create_text(x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box")
 
-        # Draw current image index / total images at top right
-        idx = self.dataset.current_index() + 1
-        total = self.dataset.total_images()
-        text = f"{idx}/{total}"
-        self.canvas.create_text(
-            self.img_pil.width * self.zoom + self.pan_x - 10, 10 + self.pan_y,
-            text=text, fill="white", anchor="ne", font=("Arial", 16, "bold"), tag="box"
-        )
 
     def redraw_image(self):
         # Remove previous image
