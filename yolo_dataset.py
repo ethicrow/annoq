@@ -53,3 +53,48 @@ class YoloDataset:
 
     def total_images(self):
         return len(self.image_paths)
+
+    def compute_stats(self):
+        """Compute basic dataset statistics.
+
+        Returns a dictionary with the total number of images, a mapping of
+        class names to their occurrence counts, and the number of images that
+        contain no annotations (background images).
+        """
+        class_counts = {name: 0 for name in self.class_names}
+        background_images = 0
+
+        for img_path in self.image_paths:
+            base = os.path.splitext(os.path.basename(img_path))[0]
+            label_path = os.path.join(self.label_dir, base + ".txt")
+            if not os.path.exists(label_path):
+                background_images += 1
+                continue
+
+            with open(label_path) as f:
+                lines = [line.strip() for line in f if line.strip()]
+
+            if not lines:
+                background_images += 1
+
+            for line in lines:
+                parts = line.split()
+                if len(parts) != 5:
+                    continue
+                try:
+                    class_id = int(parts[0])
+                except ValueError:
+                    continue
+                if class_id < len(self.class_names):
+                    name = self.class_names[class_id]
+                else:
+                    name = str(class_id)
+                    if name not in class_counts:
+                        class_counts[name] = 0
+                class_counts[name] += 1
+
+        return {
+            "total_images": len(self.image_paths),
+            "class_counts": class_counts,
+            "background_images": background_images,
+        }
