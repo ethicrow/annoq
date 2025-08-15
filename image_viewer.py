@@ -71,6 +71,7 @@ class ImageViewer(tk.Frame):
         idx_entry.bind_all("<Return>", self.on_index_change)
         self.canvas.bind_all("<Left>", lambda e: self.prev_image())
         self.canvas.bind_all("<Right>", lambda e: self.next_image())
+        self.canvas.bind_all("<Control-s>", lambda e: self.save_labels())
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
 
         self.canvas.bind_all("<Button-1>", lambda event: event.widget.focus_set())
