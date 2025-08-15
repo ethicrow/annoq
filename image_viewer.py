@@ -135,10 +135,20 @@ class ImageViewer(tk.Frame):
         self.canvas.delete("box")
         # Redraw image at new zoom/pan (draw image first)
         self.redraw_image()
-        if not self.show_boxes.get():
-            self.canvas.tag_raise("crosshair")
-            return
-        for box in self.boxes:
+
+        if self.show_boxes.get():
+            boxes_to_draw = self.boxes
+            # Clear flags for boxes created while boxes were hidden
+            for box in self.boxes:
+                if hasattr(box, "created_while_hidden"):
+                    box.created_while_hidden = False
+        else:
+            # Only draw boxes created after "Show Boxes" was unchecked
+            boxes_to_draw = [
+                box for box in self.boxes if getattr(box, "created_while_hidden", False)
+            ]
+
+        for box in boxes_to_draw:
             x1, y1, x2, y2 = box.to_pixel_rect(self.img_pil.width, self.img_pil.height)
             # Apply zoom, pan and crop
             x1, y1 = image_to_canvas_coords(
@@ -149,7 +159,9 @@ class ImageViewer(tk.Frame):
             )
             color = box.color
             self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=4, tag="box")
-            self.canvas.create_text(x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box")
+            self.canvas.create_text(
+                x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box"
+            )
 
         # Draw current image index / total images at top right
         idx = self.dataset.current_index() + 1
@@ -266,6 +278,8 @@ class ImageViewer(tk.Frame):
                 0, x0, y0, x1, y1, w, h, self.dataset.class_names[0]
             )
             if box:
+                # Track if the box was created while boxes are hidden
+                box.created_while_hidden = not self.show_boxes.get()
                 self.boxes.append(box)
             self.start_draw = None
             self.refresh()
