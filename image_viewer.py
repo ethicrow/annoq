@@ -34,15 +34,22 @@ class ImageViewer(tk.Frame):
         info_frame = tk.Frame(self.main_frame)
         info_frame.pack(side="left", fill="y")
 
-        self.info_scroll = tk.Scrollbar(info_frame)
+        text_container = tk.Frame(info_frame)
+        text_container.pack(side="top", fill="both", expand=True)
+
+        self.info_scroll = tk.Scrollbar(text_container)
         self.info_scroll.pack(side="right", fill="y")
 
         self.info_text = tk.Text(
-            info_frame, width=40, yscrollcommand=self.info_scroll.set
+            text_container, width=40, yscrollcommand=self.info_scroll.set
         )
         self.info_text.pack(side="left", fill="both", expand=True)
         self.info_text.config(state=tk.DISABLED)
         self.info_scroll.config(command=self.info_text.yview)
+
+        tk.Button(info_frame, text="Clear Labels", command=self.clear_label_file).pack(
+            side="bottom", fill="x"
+        )
 
         self.canvas = tk.Canvas(self.main_frame)
         self.canvas.pack(side="left", fill="both", expand=True)
@@ -54,7 +61,6 @@ class ImageViewer(tk.Frame):
         tk.Button(ctrl_frame, text="← Prev", command=self.prev_image).pack(side="left")
         tk.Button(ctrl_frame, text="Next →", command=self.next_image).pack(side="left")
         tk.Button(ctrl_frame, text="Save", command=self.save_labels).pack(side="left")
-        tk.Button(ctrl_frame, text="Clear Labels", command=self.clear_label_file).pack(side="left")
         tk.Label(ctrl_frame, text="Image").pack(side="left")
         self.index_var = tk.StringVar(value="1")
         idx_entry = tk.Entry(ctrl_frame, width=5, textvariable=self.index_var)
