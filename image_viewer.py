@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
+import os
 from bounding_box import BoundingBox, smallest_box_containing_point
 from coords import image_to_canvas_coords, canvas_to_image_coords
 
@@ -27,10 +28,26 @@ class ImageViewer(tk.Frame):
         self.panning = False
         self.pan_start = None
 
-        self.canvas = tk.Canvas(self)
-        self.canvas.pack()
+        self.main_frame = tk.Frame(self)
+        self.main_frame.pack(fill="both", expand=True)
+
+        info_frame = tk.Frame(self.main_frame)
+        info_frame.pack(side="left", fill="y")
+
+        self.info_scroll = tk.Scrollbar(info_frame)
+        self.info_scroll.pack(side="right", fill="y")
+
+        self.info_text = tk.Text(
+            info_frame, width=40, yscrollcommand=self.info_scroll.set
+        )
+        self.info_text.pack(side="left", fill="both", expand=True)
+        self.info_text.config(state=tk.DISABLED)
+        self.info_scroll.config(command=self.info_text.yview)
+
+        self.canvas = tk.Canvas(self.main_frame)
+        self.canvas.pack(side="left", fill="both", expand=True)
         self.canvas.focus_set()
-    
+
         ctrl_frame = tk.Frame(self)
         ctrl_frame.pack()
 
@@ -83,6 +100,23 @@ class ImageViewer(tk.Frame):
         self.index_var.set(str(self.dataset.current_index() + 1))
         self.total_label.config(text=f"/{self.dataset.total_images()}")
         self.refresh()
+        self.update_info_area()
+
+    def update_info_area(self):
+        image_name = os.path.basename(self.dataset.current_image_path())
+        label_path = self.dataset.current_label_path()
+        label_name = os.path.basename(label_path)
+        if os.path.exists(label_path):
+            with open(label_path) as f:
+                content = f.read()
+        else:
+            content = ""
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete("1.0", tk.END)
+        self.info_text.insert(tk.END, f"Image: {image_name}\n")
+        self.info_text.insert(tk.END, f"Labels: {label_name}\n\n")
+        self.info_text.insert(tk.END, content)
+        self.info_text.config(state=tk.DISABLED)
 
     def refresh(self):
         self.canvas.delete("box")
@@ -344,6 +378,7 @@ class ImageViewer(tk.Frame):
 
     def save_labels(self):
         self.dataset.save_labels(self.boxes)
+        self.update_info_area()
 
     def next_image(self):
         self.dataset.next()
