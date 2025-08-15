@@ -78,6 +78,9 @@ class ImageViewer(tk.Frame):
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
         self.canvas.bind("<Button-3>", self.on_right_click)
         self.canvas.bind("<Delete>", self.delete_selected)
+        self.canvas.bind("<Enter>", self.on_canvas_enter)
+        self.canvas.bind("<Leave>", self.on_canvas_leave)
+        self.canvas.bind("<Motion>", self.on_canvas_move)
         if platform.system() == "Linux":
             self.canvas.bind('<Button-4>', self.mouseWheelHandler)
             self.canvas.bind('<Button-5>', self.mouseWheelHandler)
@@ -130,6 +133,7 @@ class ImageViewer(tk.Frame):
         # Redraw image at new zoom/pan (draw image first)
         self.redraw_image()
         if not self.show_boxes.get():
+            self.canvas.tag_raise("crosshair")
             return
         for box in self.boxes:
             x1, y1, x2, y2 = box.to_pixel_rect(self.img_pil.width, self.img_pil.height)
@@ -163,6 +167,7 @@ class ImageViewer(tk.Frame):
             font=("Arial", 16, "bold"),
             tag="box"
         )
+        self.canvas.tag_raise("crosshair")
 
     def redraw_image(self):
         # Remove previous image
@@ -243,7 +248,7 @@ class ImageViewer(tk.Frame):
             self.canvas.create_rectangle(
                 x0c, y0c, x1c, y1c, outline="white", dash=(4, 2), tag="box"
             )
-
+        self.draw_crosshair(event.x, event.y)
 
     def on_release(self, event):
         if self.dragging:
@@ -261,7 +266,7 @@ class ImageViewer(tk.Frame):
                 self.boxes.append(box)
             self.start_draw = None
             self.refresh()
-
+        self.draw_crosshair(event.x, event.y)
     def on_right_click(self, event):
         zx, zy = canvas_to_image_coords(
             event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
@@ -324,6 +329,7 @@ class ImageViewer(tk.Frame):
                 self.pan_x = mouse_x - rel_x * self.zoom
                 self.pan_y = mouse_y - rel_y * self.zoom
             self.refresh()
+        self.draw_crosshair(event.x, event.y)
 
     def on_pan_start(self, event):
         if self.zoom > 1.0:
@@ -354,6 +360,7 @@ class ImageViewer(tk.Frame):
             self.pan_x = min(max(new_pan_x, min_pan_x), max_pan_x)
             self.pan_y = min(max(new_pan_y, min_pan_y), max_pan_y)
             self.refresh()
+            self.draw_crosshair(event.x, event.y)
 
     def on_pan_end(self, event):
         self.panning = False
@@ -401,3 +408,21 @@ class ImageViewer(tk.Frame):
     def prev_image(self):
         self.dataset.prev()
         self.load_image()
+
+    def draw_crosshair(self, x, y):
+        self.canvas.delete("crosshair")
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        self.canvas.create_line(x, 0, x, h, fill="white", width=1, tag="crosshair")
+        self.canvas.create_line(0, y, w, y, fill="white", width=1, tag="crosshair")
+        self.canvas.tag_raise("crosshair")
+
+    def on_canvas_enter(self, event):
+        self.draw_crosshair(event.x, event.y)
+
+    def on_canvas_leave(self, event):
+        self.canvas.delete("crosshair")
+
+    def on_canvas_move(self, event):
+        self.draw_crosshair(event.x, event.y)
+
