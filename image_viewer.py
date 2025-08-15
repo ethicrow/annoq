@@ -9,9 +9,10 @@ from coords import image_to_canvas_coords, canvas_to_image_coords
 
 
 class ImageViewer(tk.Frame):
-    def __init__(self, root, dataset):
+    def __init__(self, root, dataset, index_callback=None):
         super().__init__(root)
         self.dataset = dataset
+        self.index_callback = index_callback
 
         self.boxes = []
         self.selected_box = None
@@ -110,6 +111,8 @@ class ImageViewer(tk.Frame):
         self.index_var.set(str(self.dataset.current_index() + 1))
         self.total_label.config(text=f"/{self.dataset.total_images()}")
         self.refresh()
+        if self.index_callback:
+            self.index_callback(self.dataset.current_index())
         self.update_info_area()
 
     def update_info_area(self):
