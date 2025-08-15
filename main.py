@@ -4,8 +4,7 @@ from tkinter import filedialog, ttk, messagebox
 from yaml_dataset_loader import YamlDatasetLoader
 from yolo_dataset import YoloDataset
 from image_viewer import ImageViewer
-from PIL import Image, ImageTk
-import cv2
+from cache import get_cached_index, update_cache
 import argparse
 
 class App:
@@ -32,6 +31,9 @@ class App:
             root.quit()
             return
 
+        self.yaml_path = os.path.abspath(yaml_path)
+        cached_index = get_cached_index(self.yaml_path)
+
         splits = self.yaml_loader.get_dataset_splits()
         if not splits:
             messagebox.showerror("Error", "No valid dataset splits found in YAML.")
@@ -43,7 +45,10 @@ class App:
         class_names = self.yaml_loader.get_class_names()
         for split in splits:
             paths = self.yaml_loader.get_paths(split)
-            self.datasets[split] = YoloDataset(paths["images"], paths["labels"], class_names)
+            ds = YoloDataset(paths["images"], paths["labels"], class_names)
+            if cached_index is not None:
+                ds.set_index(cached_index)
+            self.datasets[split] = ds
 
         # GUI dropdown to select split
         self.split_selector = ttk.Combobox(root, values=list(self.datasets.keys()), state="readonly")
@@ -66,7 +71,7 @@ class App:
         for widget in self.viewer_frame.winfo_children():
             widget.destroy()
 
-        self.viewer = ImageViewer(self.viewer_frame, self.current_dataset)
+        self.viewer = ImageViewer(self.viewer_frame, self.current_dataset, index_callback=self.on_index_update)
         self.viewer.pack(fill="both", expand=True)
 
     def on_split_selected(self, event=None):
@@ -86,6 +91,9 @@ class App:
         for name, count in stats['class_counts'].items():
             text.insert(tk.END, f"  {name}: {count}\n")
         text.config(state=tk.DISABLED)
+
+    def on_index_update(self, index):
+        update_cache(self.yaml_path, index)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AnnoQ - Simple Image Annotation Tool")
