@@ -37,6 +37,7 @@ class ImageViewer(tk.Frame):
         tk.Button(ctrl_frame, text="← Prev", command=self.prev_image).pack(side="left")
         tk.Button(ctrl_frame, text="Next →", command=self.next_image).pack(side="left")
         tk.Button(ctrl_frame, text="Save", command=self.save_labels).pack(side="left")
+        tk.Button(ctrl_frame, text="Delete", command=self.delete_image).pack(side="left")
         tk.Label(ctrl_frame, text="Image").pack(side="left")
         self.index_var = tk.StringVar(value="1")
         idx_entry = tk.Entry(ctrl_frame, width=5, textvariable=self.index_var)
@@ -341,6 +342,15 @@ class ImageViewer(tk.Frame):
 
     def save_labels(self):
         self.dataset.save_labels(self.boxes)
+
+    def delete_image(self):
+        self.dataset.delete_current()
+        if self.dataset.total_images() > 0:
+            self.load_image()
+        else:
+            self.canvas.delete("all")
+            self.index_var.set("0")
+            self.total_label.config(text="/0")
 
     def next_image(self):
         self.dataset.next()
