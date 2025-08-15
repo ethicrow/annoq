@@ -1,7 +1,8 @@
 import json
 import os
 
-CACHE_PATH = os.path.join(os.path.expanduser("~"), ".annoq_cache.json")
+# Store the cache file alongside the application's main script
+CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".annoq_cache.json")
 MAX_ENTRIES = 10
 
 
