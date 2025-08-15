@@ -4,6 +4,7 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
 from bounding_box import BoundingBox
+from coords import image_to_canvas_coords, canvas_to_image_coords
 
 
 class ImageViewer(tk.Frame):
@@ -20,6 +21,8 @@ class ImageViewer(tk.Frame):
         self.zoom = 1.0
         self.pan_x = 0
         self.pan_y = 0
+        self.crop_x = 0
+        self.crop_y = 0
 
         self.panning = False
         self.pan_start = None
@@ -40,15 +43,16 @@ class ImageViewer(tk.Frame):
         idx_entry.pack(side="left")
         self.total_label = tk.Label(ctrl_frame, text=f"/{self.dataset.total_images()}")
         self.total_label.pack(side="left")
-        idx_entry.bind("<Return>", self.on_index_change)
-        self.canvas.bind("<Left>", lambda e: self.prev_image())
-        self.canvas.bind("<Right>", lambda e: self.next_image())
+        idx_entry.bind_all("<Return>", self.on_index_change)
+        self.canvas.bind_all("<Left>", lambda e: self.prev_image())
+        self.canvas.bind_all("<Right>", lambda e: self.next_image())
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
+
+        self.canvas.bind_all("<Button-1>", lambda event: event.widget.focus_set())
 
         delete_frame = tk.Frame(self)
         delete_frame.pack(fill="x", pady=(10, 0))
         tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(side="right")
-
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
@@ -78,6 +82,8 @@ class ImageViewer(tk.Frame):
         self.zoom = 1.0
         self.pan_x = 0
         self.pan_y = 0
+        self.crop_x = 0
+        self.crop_y = 0
         self.index_var.set(str(self.dataset.current_index() + 1))
         self.total_label.config(text=f"/{self.dataset.total_images()}")
         self.refresh()
@@ -90,11 +96,13 @@ class ImageViewer(tk.Frame):
             return
         for box in self.boxes:
             x1, y1, x2, y2 = box.to_pixel_rect(self.img_pil.width, self.img_pil.height)
-            # Apply zoom and pan
-            x1 = x1 * self.zoom + self.pan_x
-            y1 = y1 * self.zoom + self.pan_y
-            x2 = x2 * self.zoom + self.pan_x
-            y2 = y2 * self.zoom + self.pan_y
+            # Apply zoom, pan and crop
+            x1, y1 = image_to_canvas_coords(
+                x1, y1, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+            )
+            x2, y2 = image_to_canvas_coords(
+                x2, y2, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+            )
             color = box.color
             self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=4, tag="box")
             self.canvas.create_text(x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box")
@@ -103,9 +111,20 @@ class ImageViewer(tk.Frame):
         idx = self.dataset.current_index() + 1
         total = self.dataset.total_images()
         text = f"{idx}/{total}"
+        if self.zoom == 1.0:
+            tx = self.img_pil.width * self.zoom + self.pan_x - 10
+            ty = 10 + self.pan_y
+        else:
+            tx = self.canvas.winfo_width() - 10
+            ty = 10
         self.canvas.create_text(
-            self.img_pil.width * self.zoom + self.pan_x - 10, 10 + self.pan_y,
-            text=text, fill="white", anchor="ne", font=("Arial", 16, "bold"), tag="box"
+            tx,
+            ty,
+            text=text,
+            fill="white",
+            anchor="ne",
+            font=("Arial", 16, "bold"),
+            tag="box"
         )
 
     def redraw_image(self):
@@ -123,6 +142,7 @@ class ImageViewer(tk.Frame):
             img_to_show = self.img_pil
             display_w, display_h = self.img_pil.width, self.img_pil.height
             pan_x, pan_y = self.pan_x, self.pan_y
+            self.crop_x, self.crop_y = 0, 0
         else:
             # Calculate crop box in original image coordinates
             # The region of the image to show is (canvas_w, canvas_h) in display, but at 1/zoom scale in the image
@@ -144,14 +164,16 @@ class ImageViewer(tk.Frame):
             img_to_show = img_cropped.resize((canvas_w, canvas_h), Image.LANCZOS)
             display_w, display_h = canvas_w, canvas_h
             pan_x, pan_y = 0, 0
+            self.crop_x, self.crop_y = left, upper
 
         self.image_tk = ImageTk.PhotoImage(img_to_show)
         self.canvas.create_image(pan_x, pan_y, anchor="nw", image=self.image_tk, tag="img")
 
     def on_click(self, event):
         # Adjust event coordinates for zoom and pan
-        zx = (event.x - self.pan_x) / self.zoom
-        zy = (event.y - self.pan_y) / self.zoom
+        zx, zy = canvas_to_image_coords(
+            event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+        )
         for box in reversed(self.boxes):
             if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
                 self.selected_box = box
@@ -161,8 +183,9 @@ class ImageViewer(tk.Frame):
         self.start_draw = (zx, zy)
 
     def on_drag(self, event):
-        zx = (event.x - self.pan_x) / self.zoom
-        zy = (event.y - self.pan_y) / self.zoom
+        zx, zy = canvas_to_image_coords(
+            event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+        )
         if self.dragging and self.selected_box:
             w, h = self.img_pil.width, self.img_pil.height
             self.selected_box.x_center = zx / w
@@ -172,11 +195,15 @@ class ImageViewer(tk.Frame):
             self.refresh()
             x0, y0 = self.start_draw
             # Transform back to canvas coordinates for drawing
-            x0c = x0 * self.zoom + self.pan_x
-            y0c = y0 * self.zoom + self.pan_y
-            x1c = event.x
-            y1c = event.y
-            self.canvas.create_rectangle(x0c, y0c, x1c, y1c, outline="white", dash=(4, 2), tag="box")
+            x0c, y0c = image_to_canvas_coords(
+                x0, y0, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+            )
+            x1c, y1c = image_to_canvas_coords(
+                zx, zy, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+            )
+            self.canvas.create_rectangle(
+                x0c, y0c, x1c, y1c, outline="white", dash=(4, 2), tag="box"
+            )
 
 
     def on_release(self, event):
@@ -184,9 +211,9 @@ class ImageViewer(tk.Frame):
             self.dragging = False
         elif self.start_draw:
             x0, y0 = self.start_draw
-            zx = (event.x - self.pan_x) / self.zoom
-            zy = (event.y - self.pan_y) / self.zoom
-            x1, y1 = zx, zy
+            x1, y1 = canvas_to_image_coords(
+                event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+            )
             w, h = self.img_pil.width, self.img_pil.height
             box = BoundingBox.from_pixel_coords(
                 0, x0, y0, x1, y1, w, h, self.dataset.class_names[0]
@@ -197,8 +224,9 @@ class ImageViewer(tk.Frame):
             self.refresh()
 
     def on_right_click(self, event):
-        zx = (event.x - self.pan_x) / self.zoom
-        zy = (event.y - self.pan_y) / self.zoom
+        zx, zy = canvas_to_image_coords(
+            event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+        )
         for box in reversed(self.boxes):
             if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
                 self.selected_box = box
@@ -242,8 +270,9 @@ class ImageViewer(tk.Frame):
             if new_zoom == self.zoom:
                 return
             mouse_x, mouse_y = event.x, event.y
-            rel_x = (mouse_x - self.pan_x) / self.zoom
-            rel_y = (mouse_y - self.pan_y) / self.zoom
+            rel_x, rel_y = canvas_to_image_coords(
+                mouse_x, mouse_y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+            )
             self.zoom = new_zoom
             if self.zoom == 1.0:
                 # Center image on canvas
