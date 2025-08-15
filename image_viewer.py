@@ -34,7 +34,6 @@ class ImageViewer(tk.Frame):
         tk.Button(ctrl_frame, text="← Prev", command=self.prev_image).pack(side="left")
         tk.Button(ctrl_frame, text="Next →", command=self.next_image).pack(side="left")
         tk.Button(ctrl_frame, text="Save", command=self.save_labels).pack(side="left")
-        tk.Button(ctrl_frame, text="Delete", command=self.delete_image).pack(side="left")
         tk.Label(ctrl_frame, text="Image").pack(side="left")
         self.index_var = tk.StringVar(value="1")
         idx_entry = tk.Entry(ctrl_frame, width=5, textvariable=self.index_var)
@@ -45,6 +44,10 @@ class ImageViewer(tk.Frame):
         self.canvas.bind("<Left>", lambda e: self.prev_image())
         self.canvas.bind("<Right>", lambda e: self.next_image())
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
+
+        delete_frame = tk.Frame(self)
+        delete_frame.pack(fill="x", pady=(10, 0))
+        tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(side="right")
 
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
