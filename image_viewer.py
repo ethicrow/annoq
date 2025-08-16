@@ -9,10 +9,12 @@ from coords import image_to_canvas_coords, canvas_to_image_coords
 
 
 class ImageViewer(tk.Frame):
-    def __init__(self, root, dataset, index_callback=None):
+    def __init__(self, root, dataset, index_callback=None, key_bindings=None):
         super().__init__(root)
         self.dataset = dataset
         self.index_callback = index_callback
+        self.key_bindings = key_bindings or {}
+        self.bound_keys = {}
 
         self.boxes = []
         self.selected_box = None
@@ -70,10 +72,10 @@ class ImageViewer(tk.Frame):
         self.total_label = tk.Label(ctrl_frame, text=f"/{self.dataset.total_images()}")
         self.total_label.pack(side="left")
         idx_entry.bind_all("<Return>", self.on_index_change)
-        self.canvas.bind_all("<Left>", lambda e: self.prev_image())
-        self.canvas.bind_all("<Right>", lambda e: self.next_image())
-        self.canvas.bind_all("<Control-s>", lambda e: self.save_labels())
         tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
+
+        # Apply key bindings
+        self.bind_keys()
 
         self.canvas.bind_all("<Button-1>", lambda event: event.widget.focus_set())
         self.canvas.bind("<Button-1>", self.on_click)
@@ -116,6 +118,37 @@ class ImageViewer(tk.Frame):
         if self.index_callback:
             self.index_callback(self.dataset.current_index())
         self.update_info_area()
+
+    def bind_keys(self):
+        # Unbind previous keys
+        for keys in self.bound_keys.values():
+            for k in keys:
+                try:
+                    self.canvas.unbind_all(k)
+                except tk.TclError:
+                    pass
+        self.bound_keys = {}
+
+        mapping = {
+            'prev_image': self.prev_image,
+            'next_image': self.next_image,
+            'save_labels': self.save_labels,
+        }
+        for action, func in mapping.items():
+            keys = self.key_bindings.get(action, [])
+            bound = []
+            for k in keys:
+                try:
+                    self.canvas.bind_all(k, lambda e, f=func: f())
+                    bound.append(k)
+                except tk.TclError:
+                    # Skip invalid key sequences to avoid crashes
+                    print(f"Warning: invalid key binding '{k}' for {action}")
+            self.bound_keys[action] = bound
+
+    def update_key_bindings(self, key_bindings):
+        self.key_bindings = key_bindings
+        self.bind_keys()
 
     def update_info_area(self):
         image_name = os.path.basename(self.dataset.current_image_path())
