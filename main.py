@@ -5,12 +5,14 @@ from yaml_dataset_loader import YamlDatasetLoader
 from yolo_dataset import YoloDataset
 from image_viewer import ImageViewer
 from cache import get_cached_index, update_cache
+from settings_window import SettingsWindow, load_keybindings
 import argparse
 
 class App:
     def __init__(self, root, yaml_path=None):
         self.root = root
         self.root.title("YOLO Dataset Viewer")
+        self.key_bindings = load_keybindings()
 
         # Ask for YAML file
         if not yaml_path:
@@ -50,14 +52,21 @@ class App:
                 ds.set_index(cached_index)
             self.datasets[split] = ds
 
+        # Top control frame
+        self.top_frame = tk.Frame(root)
+        self.top_frame.pack(fill="x")
+
         # GUI dropdown to select split
-        self.split_selector = ttk.Combobox(root, values=list(self.datasets.keys()), state="readonly")
+        self.split_selector = ttk.Combobox(self.top_frame, values=list(self.datasets.keys()), state="readonly")
         self.split_selector.current(0)
-        self.split_selector.pack(pady=5)
+        self.split_selector.pack(side="left", pady=5)
         self.split_selector.bind("<<ComboboxSelected>>", self.on_split_selected)
 
         # Button to show dataset statistics
-        tk.Button(root, text="Show Stats", command=self.show_stats).pack(pady=5)
+        tk.Button(self.top_frame, text="Show Stats", command=self.show_stats).pack(side="left", pady=5)
+
+        # Settings button (gear icon) on top right
+        tk.Button(self.top_frame, text="\u2699", command=self.open_settings).pack(side="right", padx=5, pady=5)
 
         # Frame for image viewer
         self.viewer_frame = tk.Frame(root)
@@ -71,7 +80,12 @@ class App:
         for widget in self.viewer_frame.winfo_children():
             widget.destroy()
 
-        self.viewer = ImageViewer(self.viewer_frame, self.current_dataset, index_callback=self.on_index_update)
+        self.viewer = ImageViewer(
+            self.viewer_frame,
+            self.current_dataset,
+            index_callback=self.on_index_update,
+            key_bindings=self.key_bindings,
+        )
         self.viewer.pack(fill="both", expand=True)
 
     def on_split_selected(self, event=None):
@@ -94,6 +108,14 @@ class App:
 
     def on_index_update(self, index):
         update_cache(self.yaml_path, index)
+
+    def open_settings(self):
+        def update_bindings(new_bindings):
+            self.key_bindings = new_bindings
+            if self.viewer:
+                self.viewer.update_key_bindings(self.key_bindings)
+
+        SettingsWindow(self.root, self.key_bindings, update_bindings)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AnnoQ - Simple Image Annotation Tool")
