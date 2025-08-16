@@ -16,6 +16,7 @@ class ImageViewer(tk.Frame):
 
         self.boxes = []
         self.selected_box = None
+        self.last_selected_class_id = 0
         self.dragging = False
         self.start_draw = None
         self.show_boxes = tk.BooleanVar(value=True)
@@ -276,7 +277,7 @@ class ImageViewer(tk.Frame):
             )
             w, h = self.img_pil.width, self.img_pil.height
             box = BoundingBox.from_pixel_coords(
-                0, x0, y0, x1, y1, w, h, self.dataset.class_names[0]
+                self.last_selected_class_id, x0, y0, x1, y1, w, h, self.dataset.class_names[self.last_selected_class_id]
             )
             if box:
                 # Track if the box was created while boxes are hidden
@@ -401,6 +402,7 @@ class ImageViewer(tk.Frame):
     def change_box_class(self, class_id):
         if self.selected_box is not None:
             self.selected_box.class_id = class_id
+            self.last_selected_class_id = class_id
             if class_id < len(self.dataset.class_names):
                 self.selected_box.class_name = self.dataset.class_names[class_id]
             else:
