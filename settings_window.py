@@ -12,6 +12,28 @@ DEFAULT_BINDINGS = {
     'save_labels': ['<Control-s>'],
 }
 
+
+def event_to_sequence(event):
+    """Convert a Tk event to its binding string."""
+    modifiers = []
+    state = getattr(event, 'state', 0)
+    if state & 0x0004:
+        modifiers.append('Control')
+    if state & 0x0001:
+        modifiers.append('Shift')
+    if state & 0x0008:
+        modifiers.append('Alt')
+
+    if hasattr(event, 'keysym') and event.keysym and not hasattr(event, 'num'):
+        key = event.keysym
+        if key in {'Shift_L', 'Shift_R', 'Control_L', 'Control_R', 'Alt_L', 'Alt_R'}:
+            return ''
+        return f"<{'-'.join(modifiers + [key])}>" if key else ''
+    if hasattr(event, 'num'):
+        button = f'Button-{event.num}'
+        return f"<{'-'.join(modifiers + [button])}>"
+    return ''
+
 def ensure_settings_dir():
     os.makedirs(SETTINGS_DIR, exist_ok=True)
 
@@ -54,6 +76,7 @@ class SettingsWindow(tk.Toplevel):
         self.title('Settings')
         self.callback = callback
         self.entries = {}
+        self._active_entry = None
 
         row = 0
         for action, keys in bindings.items():
@@ -62,6 +85,7 @@ class SettingsWindow(tk.Toplevel):
             entry.insert(0, ', '.join(keys))
             entry.grid(row=row, column=1, padx=5, pady=5)
             self.entries[action] = entry
+            entry.bind('<FocusIn>', lambda e, ent=entry: self._start_listening(ent))
             row += 1
 
         tk.Button(self, text='Save', command=self.save).grid(
@@ -77,3 +101,26 @@ class SettingsWindow(tk.Toplevel):
         if self.callback:
             self.callback(merged)
         self.destroy()
+
+    def _start_listening(self, entry):
+        self._active_entry = entry
+        self.bind_all('<Key>', self._record_event)
+        self.bind_all('<Button>', self._record_event)
+
+    def _stop_listening(self):
+        self.unbind_all('<Key>')
+        self.unbind_all('<Button>')
+        self._active_entry = None
+
+    def _record_event(self, event):
+        if not self._active_entry:
+            return 'break'
+        seq = event_to_sequence(event)
+        if seq:
+            existing = [k.strip() for k in self._active_entry.get().split(',') if k.strip()]
+            if seq not in existing:
+                existing.append(seq)
+                self._active_entry.delete(0, tk.END)
+                self._active_entry.insert(0, ', '.join(existing))
+        self._stop_listening()
+        return 'break'

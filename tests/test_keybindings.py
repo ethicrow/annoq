@@ -26,3 +26,14 @@ def test_default_bindings_retained(tmp_path, monkeypatch):
     bindings = sw.load_keybindings()
     assert '<Left>' in bindings['prev_image']
     assert '<Button-1>' not in bindings['prev_image']
+
+
+class DummyEvent:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+def test_event_to_sequence():
+    assert sw.event_to_sequence(DummyEvent(state=0, keysym='a')) == '<a>'
+    assert sw.event_to_sequence(DummyEvent(state=0x4, keysym='s')) == '<Control-s>'
+    assert sw.event_to_sequence(DummyEvent(state=0, num=1)) == '<Button-1>'
