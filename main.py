@@ -6,11 +6,25 @@ from yolo_dataset import YoloDataset
 from image_viewer import ImageViewer
 from cache import get_cached_index, update_cache
 import argparse
+import cv2
+from PIL import Image, ImageTk
+
+try:
+    from ultralytics import YOLO
+except Exception:  # pragma: no cover - optional dependency
+    YOLO = None
 
 class App:
-    def __init__(self, root, yaml_path=None):
+    def __init__(self, root, yaml_path=None, model_path=None):
         self.root = root
         self.root.title("YOLO Dataset Viewer")
+
+        # Model / inference state
+        self.model = None
+        self.model_path = None
+        self.inference_window = None
+        self.inference_label = None
+        self.inference_photo = None
 
         # Ask for YAML file
         if not yaml_path:
@@ -59,12 +73,21 @@ class App:
         # Button to show dataset statistics
         tk.Button(root, text="Show Stats", command=self.show_stats).pack(pady=5)
 
+        # Inference button on top right
+        self.inference_button = tk.Button(root, text="Inference", command=self.on_inference_button)
+        self.inference_button.place(relx=1.0, x=-10, y=10, anchor="ne")
+
         # Frame for image viewer
         self.viewer_frame = tk.Frame(root)
         self.viewer_frame.pack(fill="both", expand=True)
 
         self.current_dataset = self.datasets[self.split_selector.get()]
         self.viewer = None
+
+        # Load model from CLI if provided
+        if model_path:
+            self.load_model(model_path)
+
         self.load_viewer()
 
     def load_viewer(self):
@@ -94,15 +117,76 @@ class App:
 
     def on_index_update(self, index):
         update_cache(self.yaml_path, index)
+        self.run_inference_on_current_image()
+
+    def load_model(self, path):
+        if YOLO is None:
+            messagebox.showerror("Error", "Ultralytics YOLO is not installed.")
+            return False
+        try:
+            self.model = YOLO(path)
+            self.model_path = path
+            return True
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load model:\n{e}")
+            return False
+
+    def on_inference_button(self):
+        if self.model is None:
+            model_path = filedialog.askopenfilename(
+                title="Select model file",
+                filetypes=[("Model Files", "*.pt *.onnx *.pth"), ("All Files", "*.*")]
+            )
+            if not model_path:
+                return
+            if not self.load_model(model_path):
+                return
+        self.open_inference_window()
+
+    def open_inference_window(self):
+        if self.inference_window and self.inference_window.winfo_exists():
+            return
+        self.inference_window = tk.Toplevel(self.root)
+        self.inference_window.title("Inference")
+        self.inference_window.attributes("-topmost", True)
+        self.inference_window.protocol("WM_DELETE_WINDOW", self.close_inference_window)
+        self.inference_label = tk.Label(self.inference_window)
+        self.inference_label.pack()
+        self.run_inference_on_current_image()
+
+    def close_inference_window(self):
+        if self.inference_window:
+            self.inference_window.destroy()
+            self.inference_window = None
+            self.inference_label = None
+            self.inference_photo = None
+
+    def run_inference_on_current_image(self):
+        if not (self.model and self.inference_window and self.inference_window.winfo_exists()):
+            return
+        try:
+            image_path = self.current_dataset.current_image_path()
+            results = self.model(image_path)
+            if not results:
+                return
+            img = results[0].plot()
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(img)
+            self.inference_photo = ImageTk.PhotoImage(pil_img)
+            self.inference_label.config(image=self.inference_photo)
+        except Exception as e:
+            messagebox.showerror("Error", f"Inference failed:\n{e}")
+            self.close_inference_window()
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AnnoQ - Simple Image Annotation Tool")
     parser.add_argument("--yaml", help="Path to YAML dataset config file")
+    parser.add_argument("--model", help="Path to YOLO model file", default=None)
     return parser.parse_args()
 
 if __name__ == "__main__":
 
     args = parse_args()
     root = tk.Tk()
-    app = App(root, args.yaml if args.yaml else None)
+    app = App(root, args.yaml if args.yaml else None, model_path=args.model)
     root.mainloop()
