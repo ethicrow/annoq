@@ -5,7 +5,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 import cv2
-from PIL import Image, ImageTk
 
 try:
     from ultralytics import YOLO
@@ -16,6 +15,8 @@ CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".annoq_vi
 
 
 class VideoInferenceApp:
+    """Simple application to run video inference with optional ROI."""
+
     def __init__(self, root):
         self.root = root
         self.root.title("Video Inference Player")
@@ -27,6 +28,7 @@ class VideoInferenceApp:
         self.last_frame_time = time.time()
         self.roi_center = None
         self.roi_size = 100
+        self.window_created = False
 
         # Tk variables
         self.model_path = tk.StringVar()
@@ -42,10 +44,6 @@ class VideoInferenceApp:
         self.info_fps = tk.StringVar(value="True FPS: 0.00")
 
         self._load_cache()
-
-        # Layout
-        self.video_label = tk.Label(root)
-        self.video_label.pack(side=tk.LEFT, padx=5, pady=5)
 
         control_frame = tk.Frame(root)
         control_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
@@ -64,8 +62,10 @@ class VideoInferenceApp:
 
         tk.Checkbutton(control_frame, text="Enable ROI", variable=self.enable_roi).pack(pady=5, anchor="w")
 
-        self.start_button = tk.Button(control_frame, text="Start", command=self.toggle_start)
-        self.start_button.pack(fill=tk.X, pady=5)
+        tk.Button(control_frame, text="Start", command=self.start_playback).pack(fill=tk.X, pady=5)
+        tk.Button(control_frame, text="Pause", command=self.pause_playback).pack(fill=tk.X, pady=5)
+        tk.Button(control_frame, text="Rewind", command=self.rewind).pack(fill=tk.X, pady=5)
+        tk.Button(control_frame, text="Forward", command=self.forward).pack(fill=tk.X, pady=5)
 
         info_frame = tk.LabelFrame(control_frame, text="Info")
         info_frame.pack(fill=tk.X, pady=5)
@@ -73,15 +73,16 @@ class VideoInferenceApp:
         tk.Label(info_frame, textvariable=self.info_inference).pack(anchor="w")
         tk.Label(info_frame, textvariable=self.info_fps).pack(anchor="w")
 
-        self.video_label.bind("<Motion>", self.on_mouse_move)
-        self.video_label.bind("<MouseWheel>", self.on_mouse_wheel)
-        self.video_label.bind("<Button-4>", self.on_mouse_wheel)  # Linux
-        self.video_label.bind("<Button-5>", self.on_mouse_wheel)  # Linux
-
         if self.model_path.get() and os.path.exists(self.model_path.get()):
             self._load_model(self.model_path.get())
         if self.video_path.get() and os.path.exists(self.video_path.get()):
             self.cap = cv2.VideoCapture(self.video_path.get())
+
+    def _ensure_window(self):
+        if not self.window_created:
+            cv2.namedWindow("Video")
+            cv2.setMouseCallback("Video", self.on_mouse_event)
+            self.window_created = True
 
     def select_model(self):
         path = filedialog.askopenfilename(
@@ -115,30 +116,60 @@ class VideoInferenceApp:
                 self.cap.release()
             self.cap = cv2.VideoCapture(path)
 
-    def toggle_start(self):
-        if not self.running:
-            if not self.model:
-                messagebox.showwarning("Warning", "Select a model first.")
-                return
-            if not self.cap:
-                messagebox.showwarning("Warning", "Select a video first.")
-                return
-            self.running = True
-            self.start_button.config(text="Stop")
-            self.last_frame_time = time.time()
-            self._process_frame()
-        else:
-            self.running = False
-            self.start_button.config(text="Start")
+    def start_playback(self):
+        if not self.model:
+            messagebox.showwarning("Warning", "Select a model first.")
+            return
+        if not self.cap:
+            messagebox.showwarning("Warning", "Select a video first.")
+            return
+        self.running = True
+        self.last_frame_time = time.time()
+        self._ensure_window()
+        self._process_frame()
+
+    def pause_playback(self):
+        self.running = False
+
+    def rewind(self):
+        if not self.cap:
+            return
+        fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+        frames = int(fps * 5)
+        pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, pos - frames))
+        self._ensure_window()
+        self._process_frame_once()
+
+    def forward(self):
+        if not self.cap:
+            return
+        fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+        frames = int(fps * 5)
+        pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+        total = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, min(total - 1, pos + frames))
+        self._ensure_window()
+        self._process_frame_once()
 
     def _process_frame(self):
         if not self.running:
             return
+        start = time.time()
+        self._process_frame_once()
+        if not self.running:
+            return
+        elapsed = time.time() - start
+        delay = max(1.0 / self.max_fps.get() - elapsed, 0)
+        self.root.after(int(delay * 1000), self._process_frame)
+
+    def _process_frame_once(self):
+        if not self.model or not self.cap:
+            return
         ret, frame = self.cap.read()
         if not ret:
-            self.toggle_start()
+            self.running = False
             return
-
         if self.force_size.get():
             frame = cv2.resize(frame, (self.resize_w.get(), self.resize_h.get()))
 
@@ -154,57 +185,44 @@ class VideoInferenceApp:
             roi = frame[y1:y2, x1:x2]
             results = self.model(roi)
             if results:
-                plotted = results[0].plot()
-                frame[y1:y2, x1:x2] = plotted
+                frame[y1:y2, x1:x2] = results[0].plot()
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             roi_text = f"ROI size: {size}"
         else:
             results = self.model(frame)
             if results:
                 frame = results[0].plot()
+
         inf_time = time.time() - start_time
         self.info_inference.set(f"Inference: {inf_time*1000:.1f} ms")
         self.info_roi_size.set(roi_text)
-
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame_rgb)
-        imgtk = ImageTk.PhotoImage(image=img)
-        self.video_label.imgtk = imgtk
-        self.video_label.config(image=imgtk)
 
         now = time.time()
         fps = 1.0 / (now - self.last_frame_time)
         self.info_fps.set(f"True FPS: {fps:.2f}")
         self.last_frame_time = now
 
-        delay = max(1.0 / self.max_fps.get() - (time.time() - now), 0)
-        self.root.after(int(delay * 1000), self._process_frame)
+        self._ensure_window()
+        cv2.imshow("Video", frame)
+        cv2.waitKey(1)
 
-    def on_mouse_move(self, event):
+    def on_mouse_event(self, event, x, y, flags, param):
         if self.enable_roi.get():
-            self.roi_center = (event.x, event.y)
-
-    def on_mouse_wheel(self, event):
-        if self.enable_roi.get():
-            delta = 0
-            if hasattr(event, "delta") and event.delta:
-                delta = event.delta
-            elif event.num == 4:
-                delta = 120
-            elif event.num == 5:
-                delta = -120
-            if delta > 0:
-                self.roi_size += 20
-            else:
-                self.roi_size = max(20, self.roi_size - 20)
+            if event == cv2.EVENT_MOUSEMOVE:
+                self.roi_center = (x, y)
+            elif event == cv2.EVENT_MOUSEWHEEL:
+                if flags > 0:
+                    self.roi_size += 20
+                else:
+                    self.roi_size = max(20, self.roi_size - 20)
 
     def _load_cache(self):
         if os.path.exists(CACHE_PATH):
             try:
                 with open(CACHE_PATH, "r") as f:
                     data = json.load(f)
-                self.model_path.set(data.get("model", ""))
-                self.video_path.set(data.get("video", ""))
+                    self.model_path.set(data.get("model", ""))
+                    self.video_path.set(data.get("video", ""))
             except Exception:
                 pass
 
@@ -220,6 +238,8 @@ class VideoInferenceApp:
         self.running = False
         if self.cap:
             self.cap.release()
+        if self.window_created:
+            cv2.destroyWindow("Video")
         self.root.destroy()
 
 
@@ -232,3 +252,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
