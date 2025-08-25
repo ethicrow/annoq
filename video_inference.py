@@ -182,12 +182,15 @@ class VideoInferenceApp:
             y1 = max(y - size // 2, 0)
             x2 = min(x1 + size, frame.shape[1])
             y2 = min(y1 + size, frame.shape[0])
-            roi = frame[y1:y2, x1:x2]
+            roi = frame[y1:y2, x1:x2].copy()
             results = self.model(roi)
             if results:
-                frame[y1:y2, x1:x2] = results[0].plot()
+                roi_res = results[0].plot()
+                if roi_res.shape[:2] != (y2 - y1, x2 - x1):
+                    roi_res = cv2.resize(roi_res, (x2 - x1, y2 - y1))
+                frame[y1:y2, x1:x2] = roi_res
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            roi_text = f"ROI size: {size}"
+            roi_text = f"ROI size: {x2 - x1}x{y2 - y1}"
         else:
             results = self.model(frame)
             if results:
