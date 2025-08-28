@@ -391,8 +391,11 @@ class ImageViewer(tk.Frame):
             new_idx = int(self.index_var.get()) - 1
         except ValueError:
             return
-        self.dataset.set_index(new_idx)
-        self.load_image()
+        if self.dataset.current_index() != new_idx:
+            self.dataset.set_index(new_idx)
+            self.load_image()
+        else:
+            self.save_labels()
 
     def delete_selected(self, event=None):
         if self.selected_box:
