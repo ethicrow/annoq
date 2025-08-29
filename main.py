@@ -1,6 +1,7 @@
 import os
+import shutil
 import tkinter as tk
-from tkinter import filedialog, ttk, messagebox
+from tkinter import filedialog, ttk, messagebox, simpledialog
 from yaml_dataset_loader import YamlDatasetLoader
 from yolo_dataset import YoloDataset
 from image_viewer import ImageViewer
@@ -8,6 +9,7 @@ from cache import get_cached_index, update_cache
 import argparse
 import cv2
 from PIL import Image, ImageTk
+import yaml
 
 try:
     from ultralytics import YOLO
@@ -70,8 +72,11 @@ class App:
         self.split_selector.pack(pady=5)
         self.split_selector.bind("<<ComboboxSelected>>", self.on_split_selected)
 
-        # Button to show dataset statistics
-        tk.Button(root, text="Show Stats", command=self.show_stats).pack(pady=5)
+        # Frame for stats/export buttons
+        btn_frame = tk.Frame(root)
+        btn_frame.pack(pady=5)
+        tk.Button(btn_frame, text="Show Stats", command=self.show_stats).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Export", command=self.export_dataset).pack(side=tk.LEFT, padx=5)
 
         # Inference button on top right
         self.inference_button = tk.Button(root, text="Inference", command=self.on_inference_button)
@@ -114,6 +119,42 @@ class App:
         for name, count in stats['class_counts'].items():
             text.insert(tk.END, f"  {name}: {count}\n")
         text.config(state=tk.DISABLED)
+
+    def export_dataset(self):
+        dataset_name = simpledialog.askstring("Export Dataset", "Enter name for the exported dataset:")
+        if not dataset_name:
+            return
+        base_dir = filedialog.askdirectory(
+            title="Select directory for export",
+            initialdir=os.path.dirname(self.yaml_path),
+        )
+        if not base_dir:
+            return
+        export_dir = os.path.join(base_dir, dataset_name)
+        images_dir = os.path.join(export_dir, "images")
+        labels_dir = os.path.join(export_dir, "labels")
+        if os.path.exists(export_dir):
+            messagebox.showerror("Error", f"Directory '{export_dir}' already exists.")
+            return
+        try:
+            os.makedirs(images_dir, exist_ok=True)
+            os.makedirs(labels_dir, exist_ok=True)
+            current_idx = self.current_dataset.current_index()
+            for img_path in self.current_dataset.image_paths[: current_idx + 1]:
+                shutil.copy2(img_path, images_dir)
+                base = os.path.splitext(os.path.basename(img_path))[0]
+                label_src = os.path.join(self.current_dataset.label_dir, base + ".txt")
+                if os.path.exists(label_src):
+                    shutil.copy2(label_src, labels_dir)
+            data = {
+                "names": self.yaml_loader.get_class_names(),
+                "train": os.path.relpath(images_dir, export_dir),
+            }
+            with open(os.path.join(export_dir, "data.yaml"), "w") as f:
+                yaml.safe_dump(data, f)
+            messagebox.showinfo("Export Complete", f"Dataset exported to {export_dir}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Export failed:\n{e}")
 
     def on_index_update(self, index):
         update_cache(self.yaml_path, index)
