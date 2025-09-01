@@ -20,6 +20,7 @@ def test_set_index():
         dataset.set_index(-1)
         assert dataset.current_index() == 3
 
+
 def test_delete_current():
     with tempfile.TemporaryDirectory() as tmpdir:
         img_dir = os.path.join(tmpdir, 'images')

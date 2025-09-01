@@ -2,7 +2,6 @@
 
 import os
 import glob
-import shutil
 from bounding_box import BoundingBox
 
 class YoloDataset:
@@ -47,9 +46,9 @@ class YoloDataset:
         root_dir = os.path.dirname(self.image_dir)
         deleted_dir = os.path.join(root_dir, ".deleted")
         os.makedirs(deleted_dir, exist_ok=True)
-        shutil.move(img_path, os.path.join(deleted_dir, os.path.basename(img_path)))
+        os.replace(img_path, os.path.join(deleted_dir, os.path.basename(img_path)))
         if os.path.exists(label_path):
-            shutil.move(label_path, os.path.join(deleted_dir, os.path.basename(label_path)))
+            os.replace(label_path, os.path.join(deleted_dir, os.path.basename(label_path)))
         del self.image_paths[self.index]
         if self.index >= len(self.image_paths):
             self.index = max(0, len(self.image_paths) - 1)

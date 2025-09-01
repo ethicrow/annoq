@@ -53,6 +53,7 @@ class ImageViewer(tk.Frame):
         delete_frame = tk.Frame(self)
         delete_frame.pack(fill="x", pady=(10, 0))
         tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(side="right")
+
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
@@ -96,7 +97,6 @@ class ImageViewer(tk.Frame):
             return
         for box in self.boxes:
             x1, y1, x2, y2 = box.to_pixel_rect(self.img_pil.width, self.img_pil.height)
-            # Apply zoom, pan and crop
             x1, y1 = image_to_canvas_coords(
                 x1, y1, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
             )
@@ -105,7 +105,9 @@ class ImageViewer(tk.Frame):
             )
             color = box.color
             self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=4, tag="box")
-            self.canvas.create_text(x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box")
+            self.canvas.create_text(
+                x1 + 5, y1 + 10, text=box.class_name, fill=color, anchor="nw", tag="box"
+            )
 
         # Draw current image index / total images at top right
         idx = self.dataset.current_index() + 1
@@ -124,7 +126,7 @@ class ImageViewer(tk.Frame):
             fill="white",
             anchor="ne",
             font=("Arial", 16, "bold"),
-            tag="box"
+            tag="box",
         )
 
     def redraw_image(self):
@@ -170,7 +172,7 @@ class ImageViewer(tk.Frame):
         self.canvas.create_image(pan_x, pan_y, anchor="nw", image=self.image_tk, tag="img")
 
     def on_click(self, event):
-        # Adjust event coordinates for zoom and pan
+        # Adjust event coordinates for zoom, pan and crop
         zx, zy = canvas_to_image_coords(
             event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
         )
@@ -194,7 +196,6 @@ class ImageViewer(tk.Frame):
         elif self.start_draw:
             self.refresh()
             x0, y0 = self.start_draw
-            # Transform back to canvas coordinates for drawing
             x0c, y0c = image_to_canvas_coords(
                 x0, y0, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
             )
@@ -271,18 +272,27 @@ class ImageViewer(tk.Frame):
                 return
             mouse_x, mouse_y = event.x, event.y
             rel_x, rel_y = canvas_to_image_coords(
-                mouse_x, mouse_y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
+                mouse_x,
+                mouse_y,
+                self.zoom,
+                self.pan_x,
+                self.pan_y,
+                self.crop_x,
+                self.crop_y,
             )
             self.zoom = new_zoom
             if self.zoom == 1.0:
-                # Center image on canvas
                 canvas_w = self.canvas.winfo_width()
                 canvas_h = self.canvas.winfo_height()
                 self.pan_x = (canvas_w - self.img_pil.width) // 2
                 self.pan_y = (canvas_h - self.img_pil.height) // 2
+                self.crop_x = 0
+                self.crop_y = 0
             else:
                 self.pan_x = mouse_x - rel_x * self.zoom
                 self.pan_y = mouse_y - rel_y * self.zoom
+                self.crop_x = max(0, rel_x - mouse_x / self.zoom)
+                self.crop_y = max(0, rel_y - mouse_y / self.zoom)
             self.refresh()
 
     def on_pan_start(self, event):
