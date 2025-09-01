@@ -3,17 +3,20 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
-from bounding_box import BoundingBox
+import os
+from bounding_box import BoundingBox, smallest_box_containing_point
 from coords import image_to_canvas_coords, canvas_to_image_coords
 
 
 class ImageViewer(tk.Frame):
-    def __init__(self, root, dataset):
+    def __init__(self, root, dataset, index_callback=None):
         super().__init__(root)
         self.dataset = dataset
+        self.index_callback = index_callback
 
         self.boxes = []
         self.selected_box = None
+        self.last_selected_class_id = 0
         self.dragging = False
         self.start_draw = None
         self.show_boxes = tk.BooleanVar(value=True)
@@ -27,10 +30,33 @@ class ImageViewer(tk.Frame):
         self.panning = False
         self.pan_start = None
 
-        self.canvas = tk.Canvas(self)
-        self.canvas.pack()
+        self.main_frame = tk.Frame(self)
+        self.main_frame.pack(fill="both", expand=True)
+
+        info_frame = tk.Frame(self.main_frame)
+        info_frame.pack(side="left", fill="y")
+
+        text_container = tk.Frame(info_frame)
+        text_container.pack(side="top", fill="both", expand=True)
+
+        self.info_scroll = tk.Scrollbar(text_container)
+        self.info_scroll.pack(side="right", fill="y")
+
+        self.info_text = tk.Text(
+            text_container, width=40, yscrollcommand=self.info_scroll.set
+        )
+        self.info_text.pack(side="left", fill="both", expand=True)
+        self.info_text.config(state=tk.DISABLED)
+        self.info_scroll.config(command=self.info_text.yview)
+
+        tk.Button(info_frame, text="Clear Labels", command=self.clear_label_file).pack(
+            side="bottom", fill="x"
+        )
+
+        self.canvas = tk.Canvas(self.main_frame)
+        self.canvas.pack(side="left", fill="both", expand=True)
         self.canvas.focus_set()
-    
+
         ctrl_frame = tk.Frame(self)
         ctrl_frame.pack()
 
@@ -46,19 +72,30 @@ class ImageViewer(tk.Frame):
         idx_entry.bind_all("<Return>", self.on_index_change)
         self.canvas.bind_all("<Left>", lambda e: self.prev_image())
         self.canvas.bind_all("<Right>", lambda e: self.next_image())
-        tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
+        self.canvas.bind_all("<Control-s>", lambda e: self.save_labels())
+        self.canvas.bind_all("<KP_1>", lambda e: self.save_labels())
+        tk.Checkbutton(
+            ctrl_frame,
+            text="Show Boxes",
+            variable=self.show_boxes,
+            command=self.refresh,
+        ).pack(side="left")
 
         self.canvas.bind_all("<Button-1>", lambda event: event.widget.focus_set())
 
         delete_frame = tk.Frame(self)
         delete_frame.pack(fill="x", pady=(10, 0))
-        tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(side="right")
-
+        tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(
+            side="right"
+        )
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
         self.canvas.bind("<Button-3>", self.on_right_click)
         self.canvas.bind("<Delete>", self.delete_selected)
+        self.canvas.bind("<Enter>", self.on_canvas_enter)
+        self.canvas.bind("<Leave>", self.on_canvas_leave)
+        self.canvas.bind("<Motion>", self.on_canvas_move)
         if platform.system() == "Linux":
             self.canvas.bind('<Button-4>', self.mouseWheelHandler)
             self.canvas.bind('<Button-5>', self.mouseWheelHandler)
@@ -88,15 +125,46 @@ class ImageViewer(tk.Frame):
         self.index_var.set(str(self.dataset.current_index() + 1))
         self.total_label.config(text=f"/{self.dataset.total_images()}")
         self.refresh()
+        if self.index_callback:
+            self.index_callback(self.dataset.current_index())
+        self.update_info_area()
+
+    def update_info_area(self):
+        image_name = os.path.basename(self.dataset.current_image_path())
+        label_path = self.dataset.current_label_path()
+        label_name = os.path.basename(label_path)
+        if os.path.exists(label_path):
+            with open(label_path) as f:
+                content = f.read()
+        else:
+            content = ""
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete("1.0", tk.END)
+        self.info_text.insert(tk.END, f"Image: {image_name}\n")
+        self.info_text.insert(tk.END, f"Labels: {label_name}\n\n")
+        self.info_text.insert(tk.END, content)
+        self.info_text.config(state=tk.DISABLED)
 
     def refresh(self):
         self.canvas.delete("box")
         # Redraw image at new zoom/pan (draw image first)
         self.redraw_image()
-        if not self.show_boxes.get():
-            return
-        for box in self.boxes:
+
+        if self.show_boxes.get():
+            boxes_to_draw = self.boxes
+            # Clear flags for boxes created while boxes were hidden
+            for box in self.boxes:
+                if hasattr(box, "created_while_hidden"):
+                    box.created_while_hidden = False
+        else:
+            # Only draw boxes created after "Show Boxes" was unchecked
+            boxes_to_draw = [
+                box for box in self.boxes if getattr(box, "created_while_hidden", False)
+            ]
+
+        for box in boxes_to_draw:
             x1, y1, x2, y2 = box.to_pixel_rect(self.img_pil.width, self.img_pil.height)
+            # Apply zoom, pan and crop
             x1, y1 = image_to_canvas_coords(
                 x1, y1, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
             )
@@ -126,8 +194,9 @@ class ImageViewer(tk.Frame):
             fill="white",
             anchor="ne",
             font=("Arial", 16, "bold"),
-            tag="box",
+            tag="box"
         )
+        self.canvas.tag_raise("crosshair")
 
     def redraw_image(self):
         # Remove previous image
@@ -172,15 +241,17 @@ class ImageViewer(tk.Frame):
         self.canvas.create_image(pan_x, pan_y, anchor="nw", image=self.image_tk, tag="img")
 
     def on_click(self, event):
-        # Adjust event coordinates for zoom, pan and crop
+        # Adjust event coordinates for zoom and pan
         zx, zy = canvas_to_image_coords(
             event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
         )
-        for box in reversed(self.boxes):
-            if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
-                self.selected_box = box
-                self.dragging = True
-                return
+        box = smallest_box_containing_point(
+            self.boxes, zx, zy, self.img_pil.width, self.img_pil.height
+        )
+        if box is not None:
+            self.selected_box = box
+            self.dragging = True
+            return
         self.selected_box = None
         self.start_draw = (zx, zy)
 
@@ -196,6 +267,7 @@ class ImageViewer(tk.Frame):
         elif self.start_draw:
             self.refresh()
             x0, y0 = self.start_draw
+            # Transform back to canvas coordinates for drawing
             x0c, y0c = image_to_canvas_coords(
                 x0, y0, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
             )
@@ -205,7 +277,7 @@ class ImageViewer(tk.Frame):
             self.canvas.create_rectangle(
                 x0c, y0c, x1c, y1c, outline="white", dash=(4, 2), tag="box"
             )
-
+        self.draw_crosshair(event.x, event.y)
 
     def on_release(self, event):
         if self.dragging:
@@ -217,28 +289,31 @@ class ImageViewer(tk.Frame):
             )
             w, h = self.img_pil.width, self.img_pil.height
             box = BoundingBox.from_pixel_coords(
-                0, x0, y0, x1, y1, w, h, self.dataset.class_names[0]
+                self.last_selected_class_id, x0, y0, x1, y1, w, h, self.dataset.class_names[self.last_selected_class_id]
             )
             if box:
+                # Track if the box was created while boxes are hidden
+                box.created_while_hidden = not self.show_boxes.get()
                 self.boxes.append(box)
             self.start_draw = None
             self.refresh()
-
+        self.draw_crosshair(event.x, event.y)
     def on_right_click(self, event):
         zx, zy = canvas_to_image_coords(
             event.x, event.y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
         )
-        for box in reversed(self.boxes):
-            if box.contains_point(zx, zy, self.img_pil.width, self.img_pil.height):
-                self.selected_box = box
-                menu = tk.Menu(self, tearoff=0)
-                for i, name in enumerate(self.dataset.class_names):
-                    menu.add_command(label=name, command=lambda cid=i: self.change_box_class(cid))
-                try:
-                    menu.tk_popup(event.x_root, event.y_root)
-                finally:
-                    menu.grab_release()
-                break
+        box = smallest_box_containing_point(
+            self.boxes, zx, zy, self.img_pil.width, self.img_pil.height
+        )
+        if box is not None:
+            self.selected_box = box
+            menu = tk.Menu(self, tearoff=0)
+            for i, name in enumerate(self.dataset.class_names):
+                menu.add_command(label=name, command=lambda cid=i: self.change_box_class(cid))
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
 
     def mouseWheelHandler(self, event):
         if platform.system() == "Linux":
@@ -272,13 +347,7 @@ class ImageViewer(tk.Frame):
                 return
             mouse_x, mouse_y = event.x, event.y
             rel_x, rel_y = canvas_to_image_coords(
-                mouse_x,
-                mouse_y,
-                self.zoom,
-                self.pan_x,
-                self.pan_y,
-                self.crop_x,
-                self.crop_y,
+                mouse_x, mouse_y, self.zoom, self.pan_x, self.pan_y, self.crop_x, self.crop_y
             )
             self.zoom = new_zoom
             if self.zoom == 1.0:
@@ -294,6 +363,7 @@ class ImageViewer(tk.Frame):
                 self.crop_x = max(0, rel_x - mouse_x / self.zoom)
                 self.crop_y = max(0, rel_y - mouse_y / self.zoom)
             self.refresh()
+        self.draw_crosshair(event.x, event.y)
 
     def on_pan_start(self, event):
         if self.zoom > 1.0:
@@ -324,6 +394,7 @@ class ImageViewer(tk.Frame):
             self.pan_x = min(max(new_pan_x, min_pan_x), max_pan_x)
             self.pan_y = min(max(new_pan_y, min_pan_y), max_pan_y)
             self.refresh()
+            self.draw_crosshair(event.x, event.y)
 
     def on_pan_end(self, event):
         self.panning = False
@@ -334,8 +405,11 @@ class ImageViewer(tk.Frame):
             new_idx = int(self.index_var.get()) - 1
         except ValueError:
             return
-        self.dataset.set_index(new_idx)
-        self.load_image()
+        if self.dataset.current_index() != new_idx:
+            self.dataset.set_index(new_idx)
+            self.load_image()
+        else:
+            self.save_labels()
 
     def delete_selected(self, event=None):
         if self.selected_box:
@@ -346,6 +420,7 @@ class ImageViewer(tk.Frame):
     def change_box_class(self, class_id):
         if self.selected_box is not None:
             self.selected_box.class_id = class_id
+            self.last_selected_class_id = class_id
             if class_id < len(self.dataset.class_names):
                 self.selected_box.class_name = self.dataset.class_names[class_id]
             else:
@@ -355,6 +430,14 @@ class ImageViewer(tk.Frame):
 
     def save_labels(self):
         self.dataset.save_labels(self.boxes)
+        self.update_info_area()
+
+    def clear_label_file(self):
+        self.boxes = []
+        self.selected_box = None
+        self.dataset.save_labels(self.boxes)
+        self.refresh()
+        self.update_info_area()
 
     def delete_image(self):
         self.dataset.delete_current()
@@ -372,3 +455,21 @@ class ImageViewer(tk.Frame):
     def prev_image(self):
         self.dataset.prev()
         self.load_image()
+
+    def draw_crosshair(self, x, y):
+        self.canvas.delete("crosshair")
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        self.canvas.create_line(x, 0, x, h, fill="white", width=1, tag="crosshair")
+        self.canvas.create_line(0, y, w, y, fill="white", width=1, tag="crosshair")
+        self.canvas.tag_raise("crosshair")
+
+    def on_canvas_enter(self, event):
+        self.draw_crosshair(event.x, event.y)
+
+    def on_canvas_leave(self, event):
+        self.canvas.delete("crosshair")
+
+    def on_canvas_move(self, event):
+        self.draw_crosshair(event.x, event.y)
+
