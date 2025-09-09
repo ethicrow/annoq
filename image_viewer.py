@@ -74,20 +74,13 @@ class ImageViewer(tk.Frame):
         self.canvas.bind_all("<Right>", lambda e: self.next_image())
         self.canvas.bind_all("<Control-s>", lambda e: self.save_labels())
         self.canvas.bind_all("<KP_1>", lambda e: self.save_labels())
-        tk.Checkbutton(
-            ctrl_frame,
-            text="Show Boxes",
-            variable=self.show_boxes,
-            command=self.refresh,
-        ).pack(side="left")
+        tk.Checkbutton(ctrl_frame, text="Show Boxes", variable=self.show_boxes, command=self.refresh).pack(side="left")
 
         self.canvas.bind_all("<Button-1>", lambda event: event.widget.focus_set())
 
         delete_frame = tk.Frame(self)
         delete_frame.pack(fill="x", pady=(10, 0))
-        tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(
-            side="right"
-        )
+        tk.Button(delete_frame, text="Delete", command=self.delete_image).pack(side="right")
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
